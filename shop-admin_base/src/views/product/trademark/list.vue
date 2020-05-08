@@ -1,22 +1,38 @@
 <template>
   <div>
-    <el-button type="primary" icon="el-icon-plus" style="margin-bottom: 20px" @click="showAdd">添加</el-button>
+    <el-button type="primary" icon="el-icon-plus" style="margin-bottom:20px" @click="showAdd">添加</el-button>
     <el-table :data="trademarks" stripe border v-loading="loading">
       <el-table-column type="index" label="序号" width="80" align="center"></el-table-column>
-      <el-table-column prop="tmName" label="品牌名称" width="180">
-      </el-table-column>
-      <el-table-column prop="logoUrl" label="品牌LOGO" width="180">
-        <template slot-scope="scope">
-          <img :src="scope.row.logoUrl" width="100px" height="60px" alt="LOGO">
+      <el-table-column prop="tmName" label="品牌名称"></el-table-column>
+      <el-table-column prop="logoUrl" label="品牌LOGO">
+        <template slot-scope="{row}">
+          <img :src="row.logoUrl" alt="logo" width="100px" height="60px">
         </template>
       </el-table-column>
       <el-table-column prop="address" label="操作">
         <template slot-scope="scope">
-          <el-button size="small" type="warning" icon="el-icon-edit">修改</el-button>
-          <el-button size="small" type="danger" icon="el-icon-delete">删除</el-button>
+          <el-button
+            size="small"
+            type="warning"
+            icon="el-icon-edit"
+            @click="showUpdate(scope.row)"
+          >修改</el-button>
+          <el-button
+            size="small"
+            type="danger"
+            icon="el-icon-delete"
+            @click="showDelete(scope.row)"
+          >删除</el-button>
         </template>
       </el-table-column>
     </el-table>
+    <!--
+      current-page   默认第几页被选中
+      page-sizes  可以设置每页显示的条数
+      page-size 默认每页3条
+      total  总的条数
+      layout 代表的是页面中分页布局的显示顺序
+    -->
     <el-pagination
       @size-change="handleSizeChange"
       @current-change="getTrademarks"
@@ -25,31 +41,43 @@
       :page-size="limit"
       layout="prev, pager, next, jumper,->, sizes, total"
       :total="total"
-      style="text-align:center;magin-top:20px"
-      background>
-    </el-pagination>
-    <el-dialog title="添加" :visible="isShowDialog" :before-close="()=>isShowDialog=false">
-      <el-form :model="form" style="width:80%">
-        <el-form-item label="品牌名称" :label-width="formLabelWidth">
+      style="text-align:center;margin-top:20px;"
+      background
+    ></el-pagination>
+
+    <!--点击添加按钮,显示的对话框组件-->
+    <!-- <el-dialog
+      :title="form.id?'更新':'添加'"
+      :visible="isShowDialog"
+      :before-close="()=>isShowDialog=false"
+    > -->
+    <el-dialog
+      :title="form.id?'更新':'添加'"
+      :visible.sync="isShowDialog"
+    >
+      <!--品牌名字和品牌Logo-->
+      <el-form :model="form" style="width:80%" :rules="rules" ref="trademarkForm">
+        <el-form-item label="品牌名称" :label-width="formLabelWidth" prop="tmName">
           <el-input v-model="form.tmName" autocomplete="off" placeholder="请输入品牌名称"></el-input>
         </el-form-item>
-        <el-form-item label="品牌Logo" :label-width="formLabelWidth">
+        <el-form-item label="品牌Logo" :label-width="formLabelWidth" prop="logoUrl">
           <!-- <img :src="form.logoUrl" alt="logo" /> -->
           <el-upload
             class="avatar-uploader"
-            action="https://jsonplaceholder.typicode.com/posts/"
+            action="/dev-api/admin/product/fileUpload"
             :show-file-list="false"
-            :on-success="handleAvatarSuccess"
-            :before-upload="beforeAvatarUpload"
+            :on-success="handleLogoSuccess"
+            :before-upload="beforeLogoUpload"
           >
-            <img v-if="imageUrl" :src="imageUrl" class="avatar" />
+            <img v-if="form.logoUrl" :src="form.logoUrl" class="avatar">
             <i v-else class="el-icon-plus avatar-uploader-icon"></i>
           </el-upload>
         </el-form-item>
       </el-form>
       <div slot="footer" class="dialog-footer">
         <el-button @click="isShowDialog = false">取 消</el-button>
-        <el-button type="primary" @click="isShowDialog = false">确 定</el-button>
+        <!-- <el-button type="primary" @click="isShowDialog = false">确 定</el-button> -->
+        <el-button type="primary" @click="addOrUpdateTrademark">确 定</el-button>
       </div>
     </el-dialog>
   </div>
@@ -78,7 +106,21 @@ export default {
         // 品牌的图片路径
         logoUrl: ''
       },
-      formLabelWidth: '120px'
+      formLabelWidth: '120px',
+      rules: {
+        tmName: [
+          { required: true, message: '请输入品牌名称' },
+          {
+            min: 2,
+            max: 10,
+            message: '长度在 2 到 10 个字符',
+            trigger: 'change'
+          }
+        ],
+        logoUrl: [
+          { required: true, message: '请上传品牌Logo', trigger: 'change' }
+        ]
+      }
     }
   },
   mounted() {
@@ -121,8 +163,118 @@ export default {
     // }
     // 添加数据
     showAdd() {
+      this.form = {
+        tmName: '',
+        logoUrl: ''
+      }
       // 显示对话框
       this.isShowDialog = true
+      // 清除表单验证
+      this.$nextTick(() => {
+        this.$refs.trademarkForm.clearValidate()
+      })
+    },
+    // 图片上传
+    handleLogoSuccess(res, file) {
+      // 更新
+      this.form.logoUrl = res.data
+      // 图片上传成功
+      this.$refs.trademarkForm.clearValidate('logoUrl')
+    },
+    // 限制图片上传大小
+    beforeLogoUpload(file) {
+      // 限制图片类型
+      const isJPG = ['image/jpeg', 'image/png'].includes(file.type)
+      // 限制图片的大小的
+      const isLt2M = file.size / 1024 / 1024 < 2
+
+      if (!isJPG) {
+        this.$message.error('上传头像图片只能是 JPG 格式!')
+      }
+      if (!isLt2M) {
+        this.$message.error('上传头像图片大小不能超过 2MB!')
+      }
+      // 如果都满足条件则返回true
+      return isJPG && isLt2M
+    },
+    // 添加品牌信息
+    addOrUpdateTrademark() {
+      // 1. 表单校验功能---vee-validate插件---element-ui组件库,内部也有表单校验
+      this.$refs['trademarkForm'].validate(async valid => {
+        if (valid) {
+          const { form } = this
+          let result
+          if (form.id) {
+            // 更新
+            result = await this.$API.trademark.updateTrademark(this.form)
+          } else {
+            // 添加
+            result = await this.$API.trademark.addTrademark(this.form)
+          }
+          // 判断是否成功
+          if (result.code === 200) {
+            // 提示消息
+            this.$message({
+              type: 'success',
+              message: `${form.id ? '更新' : '添加'}品牌成功`
+            })
+            // 重新获取数据
+            this.getTrademarks()
+            // 隐藏对话框
+            this.isShowDialog = false
+          } else {
+            this.$message({
+              type: 'error',
+              message: `${form.id ? '更新' : '添加'}品牌失败`
+            })
+          }
+        }
+      })
+    },
+    // 修改品牌信息
+    showUpdate(trademark) {
+      // 更新form对象中的数据
+      // 列表自动的更新
+      // this.form = trademark
+      this.form = { ...trademark }
+      // 显对话框
+      this.isShowDialog = true
+    },
+    // 删除品牌信息
+    showDelete(trademark) {
+      this.$confirm(`确定删除${trademark.tmName}吗?`, '提示', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      })
+        .then(async() => {
+          // 调用接口,发送删除数据的请求
+          const result = await this.$API.trademark.deleteTrademark(trademark.id)
+          if (result.code === 200) {
+            this.$message({
+              type: 'success',
+              message: '删除成功!'
+            })
+            // 重新获取数据,显示的是第一页的数据
+            // this.getTrademarks(1)
+            // 如果就想看当前页,或者上一页
+            // this.getTrademarks(this.page)
+            this.getTrademarks(
+              this.trademarks.length === 1 ? this.page - 1 : this.page
+            )
+          } else {
+            this.$message({
+              type: 'error',
+              message: '删除失败!'
+            })
+          }
+        })
+        .catch(() => {
+          this.$message({
+            type: 'info',
+            message: '已取消删除'
+          })
+        })
     }
   }
 }
